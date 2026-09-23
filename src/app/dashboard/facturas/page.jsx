@@ -606,8 +606,8 @@ export default function FacturasPage() {
                             <span className="text-slate-600 dark:text-slate-400">
                                 Saldo al inicio del período:{" "}
                                 <strong className={`font-mono tabular-nums ${saldoInicialPeriodo >= 0
-                                        ? "text-slate-800 dark:text-slate-200"
-                                        : "text-red-600 dark:text-red-400"
+                                    ? "text-slate-800 dark:text-slate-200"
+                                    : "text-red-600 dark:text-red-400"
                                     }`}>
                                     {formatMoneda(saldoInicialPeriodo)}
                                 </strong>
@@ -616,7 +616,6 @@ export default function FacturasPage() {
                         </div>
                     )}
 
-                    {/* PERÍODO RÁPIDO */}
 
                     {/* PERÍODO RÁPIDO */}
                     <div className="mb-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3">
