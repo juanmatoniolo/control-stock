@@ -13,6 +13,15 @@ import { db } from "./firebase";
 import { mostrarFecha } from "./combustible";
 
 /* ======================================================
+   HELPERS DE TEXTO
+   ====================================================== */
+// Normaliza texto: trim + colapsa espacios múltiples
+export function normalizarTexto(v) {
+	if (v == null) return "";
+	return String(v).replace(/\s+/g, " ").trim();
+}
+
+/* ======================================================
    HELPERS DE MONEDA Y FECHA
    ====================================================== */
 
@@ -31,18 +40,16 @@ export function parseMoneda(valor) {
 	const lastDot = s.lastIndexOf(".");
 
 	if (lastComma > -1 && lastDot > -1) {
-		// Ambos presentes: el que aparece último es el separador decimal
 		s =
 			lastComma > lastDot
 				? s.replace(/\./g, "").replace(",", ".")
 				: s.replace(/,/g, "");
 	} else if (lastComma > -1) {
 		const decimales = s.length - lastComma - 1;
-		s = decimales === 3 ? s.replace(/,/g, "") : s.replace(",", "."); // 3 decimales tras la coma = separador de miles
+		s = decimales === 3 ? s.replace(/,/g, "") : s.replace(",", ".");
 	} else if (lastDot > -1) {
 		const decimales = s.length - lastDot - 1;
-		if (decimales === 3) s = s.replace(/\./g, ""); // "1.234" = miles
-		// si no, el punto ya es decimal ("1234.56") y se deja tal cual
+		if (decimales === 3) s = s.replace(/\./g, "");
 	}
 
 	const n = Number(s);
@@ -68,7 +75,7 @@ export function fechaCorta(iso) {
 	return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-// Convierte serial de fecha de Excel (número de días desde 1899-12-30) a ISO yyyy-mm-dd
+// Convierte serial de fecha de Excel a ISO yyyy-mm-dd
 function excelSerialToISO(serial) {
 	const utcDays = Math.floor(serial - 25569);
 	const utcValue = utcDays * 86400 * 1000;
@@ -79,9 +86,7 @@ function excelSerialToISO(serial) {
 	return `${y}-${m}-${d}`;
 }
 
-// Normaliza cualquier representación de fecha a ISO yyyy-mm-dd.
-// Acepta: objeto Date, serial numérico de Excel, "dd/mm/aaaa", "dd-mm-aaaa", "aaaa-mm-dd".
-// SIEMPRE interpreta el formato ambiguo dd/mm/aaaa (nunca mm/dd), acorde al uso local.
+// Normaliza cualquier representación de fecha a ISO yyyy-mm-dd
 export function normalizarFecha(valor) {
 	if (valor === null || valor === undefined || valor === "") return "";
 
@@ -100,13 +105,11 @@ export function normalizarFecha(valor) {
 	const s = String(valor).trim();
 	if (!s) return "";
 
-	// yyyy-mm-dd (ISO, con o sin hora)
 	let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
 	if (m) {
 		return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
 	}
 
-	// dd/mm/aaaa o dd-mm-aaaa (con año de 2 o 4 dígitos)
 	m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
 	if (m) {
 		let [, d, mo, y] = m;
@@ -114,7 +117,6 @@ export function normalizarFecha(valor) {
 		const diaNum = Number(d);
 		const mesNum = Number(mo);
 		if (mesNum > 12 && diaNum <= 12) {
-			// El Excel invirtió día/mes (raro, pero por las dudas)
 			return `${y}-${d.padStart(2, "0")}-${mo.padStart(2, "0")}`;
 		}
 		return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
@@ -155,9 +157,6 @@ export function suscribirFacturas(callback) {
 
 /* ======================================================
    HELPERS
-   Compatibilidad con datos viejos:
-   - debitoss viejos → egresos
-   - creditos viejos → ingresos
    ====================================================== */
 function parseNumero(v) {
 	return parseMoneda(v);
@@ -168,17 +167,16 @@ function limpiarFactura(data) {
 	const egresos = parseMoneda(data.egresos ?? data.debitos);
 	return {
 		fecha: normalizarFecha(data.fecha),
-		concepto: String(data.concepto || "").trim(),
-		comprobante: String(data.comprobante || "").trim(),
-		proveedor: String(data.proveedor || "").trim(),
+		concepto: normalizarTexto(data.concepto),
+		comprobante: normalizarTexto(data.comprobante),
+		proveedor: normalizarTexto(data.proveedor),
 		ingresos,
 		egresos,
-		categoria: String(data.categoria || "").trim(),
-		notas: String(data.notas || "").trim(),
+		categoria: normalizarTexto(data.categoria),
+		notas: normalizarTexto(data.notas),
 	};
 }
 
-// Normaliza una factura leída de Firebase (por compatibilidad)
 export function normalizarFactura(f) {
 	if (!f) return f;
 	return {
@@ -227,7 +225,6 @@ export async function eliminarFactura(id) {
 
 /* ======================================================
    CÁLCULO DE SALDO CORRIDO
-   saldo = saldo_anterior + ingresos - egresos
    ====================================================== */
 export function calcularSaldos(facturas) {
 	const ordenadas = [...facturas].map(normalizarFactura).sort((a, b) => {
@@ -531,12 +528,10 @@ const MAPA = {
 	concepto: "concepto",
 	comprobante: "comprobante",
 	proveedor: "proveedor",
-	// Nuevos nombres
 	ingresos: "ingresos",
 	ingreso: "ingresos",
 	egresos: "egresos",
 	egreso: "egresos",
-	// Compatibilidad con nombres viejos
 	debitos: "egresos",
 	debito: "egresos",
 	creditos: "ingresos",
@@ -549,8 +544,6 @@ const MAPA = {
 	notas: "notas",
 };
 
-// IMPORTANTE: raw:true para que XLSX entregue Date objects / seriales reales
-// en vez de strings ya formateados con un locale ambiguo (evita mm/dd vs dd/mm).
 export function parsearExcelFacturas(buffer) {
 	const wb = XLSX.read(buffer, { cellDates: true });
 	const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -577,13 +570,13 @@ export function parsearExcelFacturas(buffer) {
 			});
 			return {
 				fecha: normalizarFecha(obj.fecha),
-				concepto: String(obj.concepto || "").trim(),
-				comprobante: String(obj.comprobante || "").trim(),
-				proveedor: String(obj.proveedor || "").trim(),
+				concepto: normalizarTexto(obj.concepto),
+				comprobante: normalizarTexto(obj.comprobante),
+				proveedor: normalizarTexto(obj.proveedor),
 				ingresos: parseNumero(obj.ingresos),
 				egresos: parseNumero(obj.egresos),
-				categoria: String(obj.categoria || "").trim() || "Pendiente",
-				notas: String(obj.notas || "").trim(),
+				categoria: normalizarTexto(obj.categoria) || "Pendiente",
+				notas: normalizarTexto(obj.notas),
 			};
 		})
 		.filter((f) => f.fecha);
@@ -593,8 +586,7 @@ export async function importarFacturas(lista) {
 	if (!lista.length) return 0;
 	const ids = [];
 	for (let i = 0; i < lista.length; i++) {
-		const id = await reservarIdFactura();
-		ids.push(id);
+		ids.push(await reservarIdFactura());
 	}
 
 	const ahora = Date.now();
@@ -614,8 +606,7 @@ export async function importarFacturas(lista) {
 }
 
 /* ======================================================
-   MULTI-CREACIÓN (varios asientos de una vez)
-   Cada movimiento se guarda como registro independiente
+   MULTI-CREACIÓN
    ====================================================== */
 export async function crearFacturasBatch(lista) {
 	if (!lista.length) return [];
@@ -668,20 +659,6 @@ export function suscribirCierres(callback) {
 	});
 }
 
-/**
- * Cierra el ejercicio contable.
- *
- * @param {Object} opciones
- * @param {string} opciones.nombre          Nombre del ejercicio (ej: "Ejercicio 2026")
- * @param {"continuar"|"archivar"} opciones.modo
- *   - continuar: reinicia numeración, mantiene histórico, crea saldo inicial
- *   - archivar: guarda snapshot en /cierres y borra TODO, crea saldo inicial
- * @param {boolean} opciones.crearSaldoInicial  Crear asiento de apertura
- * @param {number} opciones.saldoFinal          Saldo con el que se cierra
- * @param {number} opciones.totalIngresos
- * @param {number} opciones.totalEgresos
- * @param {number} opciones.cantidadMovimientos
- */
 export async function cerrarEjercicio(opciones) {
 	const {
 		nombre = `Ejercicio ${new Date().getFullYear()}`,
@@ -706,10 +683,8 @@ export async function cerrarEjercicio(opciones) {
 		createdAt: Date.now(),
 	};
 
-	// 1. Guardar registro del cierre
 	await set(ref(db, `${CIERRES_PATH}/${cierreId}`), cierreBase);
 
-	// 2. Si el modo es "archivar", copiamos el snapshot y borramos todo
 	if (modo === "archivar") {
 		const { get } = await import("firebase/database");
 		const snap = await get(ref(db, FACTURAS_PATH));
@@ -724,14 +699,11 @@ export async function cerrarEjercicio(opciones) {
 			await update(ref(db), snapshotUpdates);
 		}
 
-		// Borrar todas las facturas del nodo activo
 		await remove(ref(db, FACTURAS_PATH));
 	}
 
-	// 3. Reiniciar contador
 	await set(ref(db, CONTADOR_FACTURAS), 0);
 
-	// 4. Crear asiento de saldo inicial si corresponde
 	if (crearSaldoInicial && saldoFinal !== 0) {
 		await crearFactura({
 			fecha: new Date().toISOString().slice(0, 10),
@@ -749,7 +721,7 @@ export async function cerrarEjercicio(opciones) {
 }
 
 /* ======================================================
-   ELIMINAR TODO (sin guardar en cierres)
+   ELIMINAR TODO
    ====================================================== */
 export async function eliminarTodo() {
 	await remove(ref(db, FACTURAS_PATH));
