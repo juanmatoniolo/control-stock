@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import ChoferSelect from "@/components/choferes/ChoferSelect";
+import EnfermeroSelect from "@/components/choferes/EnfermeroSelect";
 
 const inputClass =
     "w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/50 outline-none transition";
@@ -147,6 +148,7 @@ export default function FormTraslado({ values, onChange, esEdicion = false }) {
             <div>
                 <SectionTitle>Personal y pasajero</SectionTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    {/* CHOFER */}
                     <div>
                         <label className={labelClass}>
                             Chofer <span className="text-red-500">*</span>
@@ -170,17 +172,37 @@ export default function FormTraslado({ values, onChange, esEdicion = false }) {
                         />
                         {esEdicion && (
                             <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                                En edición se muestran también choferes dados de baja
+                                En edición se muestran también los dados de baja
                             </p>
                         )}
                     </div>
 
-                    <Field
-                        label="Enfermero/a"
-                        value={values.enfermero}
-                        onChange={(v) => onChange("enfermero", v)}
-                        placeholder="Nombre del enfermero"
-                    />
+                    {/* ENFERMERO */}
+                    <div>
+                        <label className={labelClass}>Enfermero/a</label>
+                        <EnfermeroSelect
+                            value={
+                                values.enfermeroId || values.enfermero
+                                    ? { id: values.enfermeroId, nombre: values.enfermero }
+                                    : null
+                            }
+                            onChange={(c) => {
+                                if (!c) {
+                                    onChange("enfermeroId", null);
+                                    onChange("enfermero", "");
+                                } else {
+                                    onChange("enfermeroId", c.id ?? null);
+                                    onChange("enfermero", c.nombre || "");
+                                }
+                            }}
+                            soloActivos={!esEdicion}
+                        />
+                        {esEdicion && (
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                                En edición se muestran también los dados de baja
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-3 sm:mt-4">

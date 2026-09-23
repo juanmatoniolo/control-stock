@@ -56,6 +56,7 @@ function limpiar(data) {
 		combustiblePrecio: Number(data.combustiblePrecio) || 0,
 		choferId: data.choferId ?? null,
 		choferNombre: (data.choferNombre || "").trim(),
+		enfermeroId: data.enfermeroId ?? null,
 		enfermero: (data.enfermero || "").trim(),
 		paciente: (data.paciente || "").trim(),
 		motivo: (data.motivo || "").trim(),
@@ -208,6 +209,7 @@ export function descargarPlantilla() {
 
 /* ============ STATS ============ */
 export function calcularStats(traslados) {
+	// Caso vacío
 	if (!traslados.length) {
 		return {
 			total: 0,
@@ -220,9 +222,12 @@ export function calcularStats(traslados) {
 			viajeMasLargoHs: null,
 			topChoferesViajes: [],
 			topChoferesKm: [],
+			topEnfermerosViajes: [],
+			topEnfermerosKm: [],
 		};
 	}
 
+	/* ---------- TOTALES ---------- */
 	const kmTotal = traslados.reduce((s, t) => s + kmRecorridos(t), 0);
 	const litrosTotal = traslados.reduce(
 		(s, t) => s + (Number(t.combustibleLitros) || 0),
@@ -233,13 +238,13 @@ export function calcularStats(traslados) {
 		0,
 	);
 
-	// Viaje más largo por km
+	/* ---------- VIAJE MÁS LARGO (KM) ---------- */
 	const viajeMasLargoKm = traslados.reduce(
 		(max, t) => (kmRecorridos(t) > kmRecorridos(max) ? t : max),
 		traslados[0],
 	);
 
-	// Viaje más largo por duración
+	/* ---------- VIAJE MÁS LARGO (DURACIÓN) ---------- */
 	const conDuracion = traslados
 		.map((t) => ({ t, min: duracionMinutos(t) }))
 		.filter((x) => x.min != null);
@@ -250,7 +255,7 @@ export function calcularStats(traslados) {
 			)
 		: null;
 
-	// Ranking choferes
+	/* ---------- RANKING CHOFERES ---------- */
 	const porChofer = {};
 	traslados.forEach((t) => {
 		const key = t.choferNombre || t.choferId || "Sin asignar";
@@ -267,6 +272,26 @@ export function calcularStats(traslados) {
 		.slice(0, 5);
 	const topChoferesKm = [...ranking].sort((a, b) => b.km - a.km).slice(0, 5);
 
+	/* ---------- RANKING ENFERMEROS ---------- */
+	const porEnfermero = {};
+	traslados.forEach((t) => {
+		if (!t.enfermero) return;
+		const key = t.enfermero;
+		if (!porEnfermero[key])
+			porEnfermero[key] = { nombre: key, viajes: 0, km: 0 };
+		porEnfermero[key].viajes += 1;
+		porEnfermero[key].km += kmRecorridos(t);
+	});
+	const rankingEnf = Object.values(porEnfermero);
+
+	const topEnfermerosViajes = [...rankingEnf]
+		.sort((a, b) => b.viajes - a.viajes)
+		.slice(0, 5);
+	const topEnfermerosKm = [...rankingEnf]
+		.sort((a, b) => b.km - a.km)
+		.slice(0, 5);
+
+	/* ---------- RETURN ---------- */
 	return {
 		total: traslados.length,
 		kmTotal,
@@ -281,6 +306,8 @@ export function calcularStats(traslados) {
 			: null,
 		topChoferesViajes,
 		topChoferesKm,
+		topEnfermerosViajes,
+		topEnfermerosKm,
 	};
 }
 
@@ -297,6 +324,7 @@ export const TRASLADO_VACIO = {
 	combustiblePrecio: "",
 	choferId: null,
 	choferNombre: "",
+	enfermeroId: null,
 	enfermero: "",
 	paciente: "",
 	motivo: "",

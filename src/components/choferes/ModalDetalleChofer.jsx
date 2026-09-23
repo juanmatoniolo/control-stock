@@ -3,7 +3,7 @@
 import Modal from "@/components/ui/Modal";
 import CopyButton from "@/components/ui/CopyButton";
 import { linkWhatsApp, linkTel, linkMail } from "@/lib/whatsapp";
-import { nombreCompleto } from "@/lib/choferes";
+import { nombreCompleto, ROLES, esChofer, esEnfermero } from "@/lib/choferes";
 
 function Field({ label, value, copy = true, mono = false, full = false, extra }) {
     if (!value || !String(value).trim()) return null;
@@ -85,6 +85,13 @@ export default function ModalDetalleChofer({ open, onClose, chofer }) {
                                 {nombreCompleto(c)}
                             </h2>
                             <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                <span
+                                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${ROLES[c.rol || "chofer"]?.color || ROLES.chofer.color
+                                        }`}
+                                >
+                                    <span>{ROLES[c.rol || "chofer"]?.icon || "🚑"}</span>
+                                    {ROLES[c.rol || "chofer"]?.label || "Chofer"}
+                                </span>
                                 <span
                                     className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.activo !== false
                                         ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"

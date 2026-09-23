@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { suscribirChoferes, nombreCompleto, esChofer } from "@/lib/choferes";
+import { suscribirChoferes, nombreCompleto, esEnfermero } from "@/lib/choferes";
 
-export default function ChoferSelect({
+/**
+ * Selector de enfermero/a con búsqueda.
+ * Solo muestra personal que puede asistir como enfermero.
+ */
+export default function EnfermeroSelect({
     value,
     onChange,
     soloActivos = true,
-    placeholder = "Buscar chofer...",
+    placeholder = "Buscar enfermero/a...",
     allowFreeText = true,
 }) {
-    const [choferes, setChoferes] = useState([]);
+    const [personal, setPersonal] = useState([]);
     const [abierto, setAbierto] = useState(false);
     const [query, setQuery] = useState("");
     const [enfocado, setEnfocado] = useState(false);
@@ -19,12 +23,11 @@ export default function ChoferSelect({
 
     useEffect(() => {
         const unsub = suscribirChoferes((arr) => {
-            // Solo mostramos quienes pueden conducir (chofer o ambos)
-            setChoferes(arr.filter(esChofer));
+            // Solo los que pueden asistir como enfermeros
+            setPersonal(arr.filter(esEnfermero));
         });
         return () => unsub();
     }, []);
-
 
     useEffect(() => {
         function onClick(e) {
@@ -38,16 +41,16 @@ export default function ChoferSelect({
     }, []);
 
     const disponibles = useMemo(() => {
-        return soloActivos ? choferes.filter((c) => c.activo !== false) : choferes;
-    }, [choferes, soloActivos]);
+        return soloActivos ? personal.filter((c) => c.activo !== false) : personal;
+    }, [personal, soloActivos]);
 
     const filtrados = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) return disponibles.slice(0, 30);
         return disponibles
             .filter((c) => {
-                const texto = `${c.apellido || ""} ${c.nombre || ""} ${c.dni || ""}`.toLowerCase();
-                return texto.includes(q);
+                const txt = `${c.apellido || ""} ${c.nombre || ""} ${c.dni || ""} ${c.matricula || ""}`.toLowerCase();
+                return txt.includes(q);
             })
             .slice(0, 30);
     }, [disponibles, query]);
@@ -94,7 +97,7 @@ export default function ChoferSelect({
                         setAbierto(true);
                     }}
                     placeholder={placeholder}
-                    className="w-full px-3 py-2 pr-9 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/50 outline-none transition"
+                    className="w-full px-3 py-2 pr-9 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/50 outline-none transition"
                 />
                 {value && !enfocado ? (
                     <button
@@ -132,15 +135,17 @@ export default function ChoferSelect({
                                         setAbierto(false);
                                         setEnfocado(false);
                                     }}
-                                    className="text-xs text-sky-600 dark:text-sky-400 hover:underline"
+                                    className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
                                 >
                                     Usar &quot;{query.trim()}&quot; como texto libre
                                 </button>
                             ) : (
                                 <p className="text-xs text-slate-400 dark:text-slate-500">
-                                    {soloActivos
-                                        ? "No hay choferes activos que coincidan."
-                                        : "Sin coincidencias."}
+                                    {personal.length === 0
+                                        ? "No hay enfermeros cargados en Personal."
+                                        : soloActivos
+                                            ? "No hay enfermeros activos que coincidan."
+                                            : "Sin coincidencias."}
                                 </p>
                             )}
                         </div>
@@ -155,7 +160,7 @@ export default function ChoferSelect({
                                             type="button"
                                             onClick={() => elegir(c)}
                                             className={`w-full text-left px-3 py-2 transition flex items-center justify-between gap-2 ${seleccionado
-                                                ? "bg-sky-50 dark:bg-sky-950/40"
+                                                ? "bg-violet-50 dark:bg-violet-950/40"
                                                 : "hover:bg-slate-50 dark:hover:bg-slate-800/60"
                                                 }`}
                                         >
@@ -171,17 +176,11 @@ export default function ChoferSelect({
                                                     )}
                                                 </div>
                                                 <p className="text-xs text-slate-400 dark:text-slate-500 truncate">
-                                                    #{c.id} {c.dni ? `· DNI ${c.dni}` : ""}
+                                                    #{c.id} {c.matricula ? `· Mat. ${c.matricula}` : c.dni ? `· DNI ${c.dni}` : ""}
                                                 </p>
                                             </div>
                                             {seleccionado && (
-                                                <svg
-                                                    className="w-4 h-4 text-sky-600 dark:text-sky-400 flex-shrink-0"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2.5"
-                                                    viewBox="0 0 24 24"
-                                                >
+                                                <svg className="w-4 h-4 text-violet-600 dark:text-violet-400 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                                 </svg>
                                             )}
