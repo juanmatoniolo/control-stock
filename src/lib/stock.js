@@ -836,6 +836,77 @@ export const MOVIMIENTOS_FRECUENTES = [
 ];
 
 /* ======================================================
+   EXPORTAR EGRESOS A EXCEL (una fila por item)
+   ====================================================== */
+export function exportarEgresosExcel(egresos) {
+	const filas = [];
+
+	egresos.forEach((m) => {
+		const items = itemsDe(m);
+		items.forEach((it) => {
+			filas.push({
+				"#": m.id,
+				FECHA: mostrarFecha(m.fecha),
+				MOVIMIENTO: m.movimiento || "",
+				CODIGO: it.codigo,
+				PRODUCTO: it.producto,
+				MARCA: it.marca || "",
+				"Nº DE LOTE": it.numeroLote || "",
+				VTO: mostrarFecha(it.vencimiento),
+				CANTIDAD: it.cantidad,
+				"PRECIO UNITARIO": it.precioUnitario || 0,
+				"PRECIO TOTAL": it.precioTotal || 0,
+				OBSERVACIONES: m.observaciones || "",
+				FIRMADO_POR: m.usuarioNombre || m.usuario || "",
+				USUARIO_LOGIN: m.usuario || "",
+			});
+		});
+	});
+
+	const ws = XLSX.utils.json_to_sheet(filas, {
+		header: [
+			"#",
+			"FECHA",
+			"MOVIMIENTO",
+			"CODIGO",
+			"PRODUCTO",
+			"MARCA",
+			"Nº DE LOTE",
+			"VTO",
+			"CANTIDAD",
+			"PRECIO UNITARIO",
+			"PRECIO TOTAL",
+			"OBSERVACIONES",
+			"FIRMADO_POR",
+			"USUARIO_LOGIN",
+		],
+	});
+
+	ws["!cols"] = [
+		{ wch: 6 },
+		{ wch: 12 },
+		{ wch: 24 },
+		{ wch: 14 },
+		{ wch: 30 },
+		{ wch: 16 },
+		{ wch: 16 },
+		{ wch: 12 },
+		{ wch: 10 },
+		{ wch: 16 },
+		{ wch: 14 },
+		{ wch: 30 },
+		{ wch: 22 },
+		{ wch: 16 },
+	];
+
+	const wb = XLSX.utils.book_new();
+	XLSX.utils.book_append_sheet(wb, ws, "EGRESOS");
+
+	const hoy = new Date();
+	const nombre = `egresos_${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}.xlsx`;
+	XLSX.writeFile(wb, nombre);
+}
+/* ======================================================
    PLANTILLA
    ====================================================== */
 export function descargarPlantillaStock() {

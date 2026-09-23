@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import FormProducto from "@/components/stock/FormProducto";
 import FormMovimiento from "@/components/stock/FormMovimiento";
+import FormSalida from "@/components/stock/FormSalida";
 import ModalImportar from "@/components/stock/ModalImportar";
 import ModalDetalleProducto from "@/components/stock/ModalDetalleProducto";
 import ModalAyudaImportar from "@/components/stock/ModalAyudaImportar";
+import EstadisticasStock from "@/components/stock/EstadisticasStock";
 import { useAuth } from "@/hooks/useAuth";
 import { mostrarFecha } from "@/lib/combustible";
 import {
@@ -21,6 +23,7 @@ import {
     eliminarMovimiento,
     eliminarProducto,
     exportarExcel,
+    itemsDe,
     suscribirMovimientos,
     suscribirProductos,
 } from "@/lib/stock";
@@ -69,7 +72,7 @@ function StatCard({ label, value, sub, accent = "sky" }) {
 export default function StockPage() {
     const { user } = useAuth();
 
-    const [tab, setTab] = useState("stock"); // stock | movimientos
+    const [tab, setTab] = useState("stock"); // stock | movimientos | estadisticas
     const [productos, setProductos] = useState([]);
     const [movimientos, setMovimientos] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -106,19 +109,35 @@ export default function StockPage() {
     }, []);
 
     const stock = useMemo(() => calcularStock(productos, movimientos), [productos, movimientos]);
+    const mapaStock = useMemo(() => {
+        const m = {};
+        stock.forEach((s) => (m[s.codigo] = s));
+        return m;
+    }, [stock]);
 
+    /* ============ FILTRADO MOVIMIENTOS ============ */
     const movsFiltrados = useMemo(() => {
         let arr = movimientos;
         if (filtroTipo !== "todos") arr = arr.filter((m) => m.tipo === filtroTipo);
         if (fechaDesde) arr = arr.filter((m) => (m.fecha || "") >= fechaDesde);
         if (fechaHasta) arr = arr.filter((m) => (m.fecha || "") <= fechaHasta);
+
         const q = busqueda.trim().toLowerCase();
         if (q) {
-            arr = arr.filter((m) =>
-                [m.id, m.codigo, m.producto, m.numeroFactura, m.movimiento, m.numeroLote, m.usuarioNombre, m.observaciones, m.marca]
+            arr = arr.filter((m) => {
+                const items = itemsDe(m);
+                const texto = [
+                    m.id,
+                    m.numeroFactura,
+                    m.movimiento,
+                    m.usuarioNombre,
+                    m.observaciones,
+                    ...items.map((it) => `${it.codigo} ${it.producto} ${it.marca} ${it.numeroLote}`),
+                ]
                     .filter(Boolean)
-                    .some((v) => String(v).toLowerCase().includes(q))
-            );
+                    .join(" ");
+                return texto.toLowerCase().includes(q);
+            });
         }
         return arr;
     }, [movimientos, filtroTipo, fechaDesde, fechaHasta, busqueda]);
@@ -150,13 +169,23 @@ export default function StockPage() {
             tipo,
             usuario: user?.usuario || "",
             usuarioNombre: user?.nombre || "",
+            items: tipo === "salida" ? [] : undefined,
         });
         setModalMov(true);
     }
 
     function abrirEditarMov(m) {
         setEditandoMov(m.id);
-        setFormMov({ ...MOVIMIENTO_VACIO, ...m });
+        if (m.tipo === "salida") {
+            setFormMov({
+                ...MOVIMIENTO_VACIO,
+                ...m,
+                tipo: "salida",
+                items: itemsDe(m),
+            });
+        } else {
+            setFormMov({ ...MOVIMIENTO_VACIO, ...m });
+        }
         setModalMov(true);
     }
 
@@ -172,7 +201,23 @@ export default function StockPage() {
 
     async function guardarMov(e) {
         e.preventDefault();
-        if (!formMov.fecha || !formMov.codigo || !formMov.cantidad) return;
+
+        if (formMov.tipo === "entrada") {
+            if (!formMov.fecha || !formMov.codigo || !formMov.cantidad) {
+                alert("Completá fecha, producto y cantidad.");
+                return;
+            }
+        } else {
+            if (!formMov.fecha || !formMov.movimiento?.trim()) {
+                alert("Completá fecha y movimiento.");
+                return;
+            }
+            if (!formMov.items?.length) {
+                alert("Agregá al menos un producto a la salida.");
+                return;
+            }
+        }
+
         setGuardando(true);
         try {
             const payload = {
@@ -195,7 +240,9 @@ export default function StockPage() {
     }
 
     async function borrarMov(m) {
-        if (!confirm(`¿Eliminar el movimiento #${m.id} del ${mostrarFecha(m.fecha)}?`)) return;
+        const items = itemsDe(m);
+        const descripcion = items.length > 1 ? `${items.length} productos` : items[0]?.producto || "—";
+        if (!confirm(`¿Eliminar el movimiento #${m.id} (${descripcion}) del ${mostrarFecha(m.fecha)}?`)) return;
         try {
             await eliminarMovimiento(m.id);
         } catch (err) {
@@ -247,7 +294,7 @@ export default function StockPage() {
     }
 
     async function borrarProd(p) {
-        const cant = movimientos.filter((m) => m.codigo === p.codigo).length;
+        const cant = movimientos.filter((m) => itemsDe(m).some((it) => it.codigo === p.codigo)).length;
         const aviso = cant
             ? `\n⚠ Tiene ${cant} movimiento${cant === 1 ? "" : "s"} asociado${cant === 1 ? "" : "s"}. Los movimientos se mantienen.`
             : "";
@@ -264,9 +311,14 @@ export default function StockPage() {
         exportarExcel(productos, movimientos, stock);
     }
 
-    const movValido = formMov.fecha && formMov.codigo && formMov.cantidad;
+    const movValido =
+        formMov.tipo === "entrada"
+            ? formMov.fecha && formMov.codigo && formMov.cantidad
+            : formMov.fecha && formMov.movimiento?.trim() && formMov.items?.length > 0;
+
     const prodValido = formProd.codigo?.trim() && formProd.producto?.trim();
 
+    /* ============ RENDER ============ */
     return (
         <div>
             {/* HEADER */}
@@ -331,56 +383,61 @@ export default function StockPage() {
                     <TabButton active={tab === "movimientos"} onClick={() => setTab("movimientos")} count={movimientos.length}>
                         Movimientos
                     </TabButton>
+                    <TabButton active={tab === "estadisticas"} onClick={() => setTab("estadisticas")}>
+                        Estadísticas
+                    </TabButton>
                 </div>
             </div>
 
-            {/* BARRA DE ACCIONES */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-                <div className="relative flex-1 max-w-md">
-                    <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <input
-                        type="text"
-                        value={busqueda}
-                        onChange={(e) => setBusqueda(e.target.value)}
-                        placeholder={tab === "movimientos" ? "Buscar por código, producto, factura, movimiento..." : "Buscar por código o producto..."}
-                        className="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/50 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                    />
-                </div>
-                {tab === "movimientos" ? (
-                    <div className="flex gap-2">
+            {/* BARRA DE ACCIONES (oculta en estadísticas) */}
+            {tab !== "estadisticas" && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                    <div className="relative flex-1 max-w-md">
+                        <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <input
+                            type="text"
+                            value={busqueda}
+                            onChange={(e) => setBusqueda(e.target.value)}
+                            placeholder={tab === "movimientos" ? "Buscar por producto, factura, movimiento, lote..." : "Buscar por código o producto..."}
+                            className="w-full pl-9 pr-3 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/50 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                        />
+                    </div>
+                    {tab === "movimientos" ? (
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => abrirNuevoMov("entrada")}
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                                </svg>
+                                Entrada
+                            </button>
+                            <button
+                                onClick={() => abrirNuevoMov("salida")}
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                                </svg>
+                                Salida
+                            </button>
+                        </div>
+                    ) : (
                         <button
-                            onClick={() => abrirNuevoMov("entrada")}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition"
+                            onClick={abrirNuevoProd}
+                            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition"
                         >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                             </svg>
-                            Entrada
+                            Nuevo producto
                         </button>
-                        <button
-                            onClick={() => abrirNuevoMov("salida")}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
-                            </svg>
-                            Salida
-                        </button>
-                    </div>
-                ) : (
-                    <button
-                        onClick={abrirNuevoProd}
-                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition"
-                    >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Nuevo producto
-                    </button>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
 
             {/* FILTROS MOVIMIENTOS */}
             {tab === "movimientos" && (
@@ -398,14 +455,12 @@ export default function StockPage() {
                         type="date"
                         value={fechaDesde}
                         onChange={(e) => setFechaDesde(e.target.value)}
-                        placeholder="Desde"
                         className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 focus:border-sky-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                     />
                     <input
                         type="date"
                         value={fechaHasta}
                         onChange={(e) => setFechaHasta(e.target.value)}
-                        placeholder="Hasta"
                         className="px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 focus:border-sky-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                     />
                 </div>
@@ -439,10 +494,7 @@ export default function StockPage() {
                                                     <tr>
                                                         <th className="text-left px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Código</th>
                                                         <th className="text-left px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Producto</th>
-                                                        <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Inicial</th>
-                                                        <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Entradas</th>
-                                                        <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Salidas</th>
-                                                        <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Actual</th>
+                                                        <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Stock actual</th>
                                                         <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Mín.</th>
                                                         <th className="text-center px-3 py-3 font-semibold text-slate-600 dark:text-slate-400 w-32">Estado</th>
                                                         <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400 w-32">Acciones</th>
@@ -452,11 +504,17 @@ export default function StockPage() {
                                                     {stockFiltrado.map((p) => (
                                                         <tr key={p.codigo} className="border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                                                             <td className="px-3 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">{p.codigo}</td>
-                                                            <td className="px-3 py-3 font-medium text-slate-900 dark:text-slate-100 truncate max-w-[260px]">{p.producto}</td>
-                                                            <td className="px-3 py-3 text-right text-slate-500 dark:text-slate-400 tabular-nums">{p.stockInicial}</td>
-                                                            <td className="px-3 py-3 text-right text-emerald-600 dark:text-emerald-400 font-semibold tabular-nums">+{p.entradas}</td>
-                                                            <td className="px-3 py-3 text-right text-red-600 dark:text-red-400 font-semibold tabular-nums">−{p.salidas}</td>
-                                                            <td className="px-3 py-3 text-right font-bold text-slate-900 dark:text-slate-100 tabular-nums text-base">{p.stockActual}</td>
+                                                            <td className="px-3 py-3 font-medium text-slate-900 dark:text-slate-100 truncate max-w-[320px]">{p.producto}</td>
+                                                            <td
+                                                                className={`px-3 py-3 text-right font-bold tabular-nums text-lg ${p.estado === "sin-stock"
+                                                                    ? "text-red-600 dark:text-red-400"
+                                                                    : p.estado === "bajo"
+                                                                        ? "text-amber-600 dark:text-amber-400"
+                                                                        : "text-emerald-600 dark:text-emerald-400"
+                                                                    }`}
+                                                            >
+                                                                {p.stockActual}
+                                                            </td>
                                                             <td className="px-3 py-3 text-right text-slate-500 dark:text-slate-400 tabular-nums text-xs">{p.stockMinimo || 0}</td>
                                                             <td className="px-3 py-3 text-center">
                                                                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ESTADOS[p.estado].color}`}>
@@ -512,14 +570,25 @@ export default function StockPage() {
                                                         <h3 className="font-semibold text-slate-900 dark:text-slate-100 mt-1.5 text-sm truncate">{p.producto}</h3>
                                                     </div>
                                                     <div className="text-right flex-shrink-0">
-                                                        <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 tabular-nums leading-none">{p.stockActual}</p>
-                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ESTADOS[p.estado].color}`}>{p.estadoLabel}</span>
+                                                        <p
+                                                            className={`text-3xl font-bold tabular-nums leading-none ${p.estado === "sin-stock"
+                                                                ? "text-red-600 dark:text-red-400"
+                                                                : p.estado === "bajo"
+                                                                    ? "text-amber-600 dark:text-amber-400"
+                                                                    : "text-emerald-600 dark:text-emerald-400"
+                                                                }`}
+                                                        >
+                                                            {p.stockActual}
+                                                        </p>
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium inline-block mt-1 ${ESTADOS[p.estado].color}`}>
+                                                            {p.estadoLabel}
+                                                        </span>
                                                     </div>
                                                 </div>
-                                                <div className="grid grid-cols-3 gap-2 text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
-                                                    <div><span className="text-slate-400 dark:text-slate-500">Inicial: </span><span className="text-slate-700 dark:text-slate-300 font-semibold tabular-nums">{p.stockInicial}</span></div>
-                                                    <div><span className="text-slate-400 dark:text-slate-500">Ent: </span><span className="text-emerald-600 dark:text-emerald-400 font-semibold tabular-nums">+{p.entradas}</span></div>
-                                                    <div><span className="text-slate-400 dark:text-slate-500">Sal: </span><span className="text-red-600 dark:text-red-400 font-semibold tabular-nums">−{p.salidas}</span></div>
+                                                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                                    <span className="text-slate-400 dark:text-slate-500">
+                                                        Mínimo: <strong className="text-slate-600 dark:text-slate-400">{p.stockMinimo || 0}</strong>
+                                                    </span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 pt-2.5 mt-2 border-t border-slate-100 dark:border-slate-800">
                                                     <button
@@ -563,8 +632,7 @@ export default function StockPage() {
                                                         <th className="text-left px-3 py-3 font-semibold text-slate-600 dark:text-slate-400 w-14">#</th>
                                                         <th className="text-center px-3 py-3 font-semibold text-slate-600 dark:text-slate-400 w-20">Tipo</th>
                                                         <th className="text-left px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Fecha</th>
-                                                        <th className="text-left px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Producto</th>
-                                                        <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400 w-20">Cant.</th>
+                                                        <th className="text-left px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Productos</th>
                                                         <th className="text-left px-3 py-3 font-semibold text-slate-600 dark:text-slate-400">Detalle</th>
                                                         <th className="text-right px-3 py-3 font-semibold text-slate-600 dark:text-slate-400 w-24">Acciones</th>
                                                     </tr>
@@ -572,10 +640,12 @@ export default function StockPage() {
                                                 <tbody>
                                                     {movsFiltrados.map((m) => {
                                                         const esEntrada = m.tipo === "entrada";
+                                                        const items = itemsDe(m);
+                                                        const totalUnidades = items.reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
                                                         return (
                                                             <tr key={m.id} className="border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                                                                <td className="px-3 py-3 text-slate-500 dark:text-slate-400 font-mono text-xs">#{m.id}</td>
-                                                                <td className="px-3 py-3 text-center">
+                                                                <td className="px-3 py-3 text-slate-500 dark:text-slate-400 font-mono text-xs align-top">#{m.id}</td>
+                                                                <td className="px-3 py-3 text-center align-top">
                                                                     <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${esEntrada
                                                                         ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
                                                                         : "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400"
@@ -583,34 +653,46 @@ export default function StockPage() {
                                                                         {esEntrada ? "ENT" : "SAL"}
                                                                     </span>
                                                                 </td>
-                                                                <td className="px-3 py-3 text-slate-800 dark:text-slate-200 whitespace-nowrap">{mostrarFecha(m.fecha)}</td>
+                                                                <td className="px-3 py-3 text-slate-800 dark:text-slate-200 whitespace-nowrap align-top">
+                                                                    {mostrarFecha(m.fecha)}
+                                                                </td>
                                                                 <td className="px-3 py-3">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded flex-shrink-0">{m.codigo}</span>
-                                                                        <span className="text-slate-800 dark:text-slate-200 truncate max-w-[200px]">{m.producto}</span>
+                                                                    <div className="space-y-0.5">
+                                                                        {items.slice(0, 3).map((it, i) => (
+                                                                            <div key={i} className="flex items-center gap-1.5 text-xs">
+                                                                                <span className={`font-bold tabular-nums w-8 text-right ${esEntrada ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                                                                                    }`}>
+                                                                                    {esEntrada ? "+" : "−"}{it.cantidad}
+                                                                                </span>
+                                                                                <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                                                                                    {it.codigo}
+                                                                                </span>
+                                                                                <span className="text-slate-700 dark:text-slate-300 truncate max-w-[200px]">
+                                                                                    {it.producto}
+                                                                                </span>
+                                                                            </div>
+                                                                        ))}
+                                                                        {items.length > 3 && (
+                                                                            <p className="text-[11px] text-slate-400 dark:text-slate-500 italic pl-10">
+                                                                                + {items.length - 3} más ({totalUnidades} uds)
+                                                                            </p>
+                                                                        )}
                                                                     </div>
                                                                 </td>
-                                                                <td className={`px-3 py-3 text-right font-bold tabular-nums ${esEntrada ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-                                                                    }`}>
-                                                                    {esEntrada ? "+" : "−"}{m.cantidad}
-                                                                </td>
-                                                                <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400 truncate max-w-[300px]">
+                                                                <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400 truncate max-w-[240px] align-top">
                                                                     {esEntrada ? (
                                                                         <>
                                                                             {m.numeroFactura && <span className="font-mono">{m.numeroFactura}</span>}
-                                                                            {m.marca && <> · {m.marca}</>}
-                                                                            {m.numeroLote && <> · Lote {m.numeroLote}</>}
+                                                                            {items[0]?.marca && <> · {items[0].marca}</>}
                                                                         </>
                                                                     ) : (
                                                                         <>
                                                                             <strong className="text-slate-700 dark:text-slate-300">{m.movimiento}</strong>
-                                                                            {m.marca && <> · {m.marca}</>}
-                                                                            {m.numeroLote && <> · Lote {m.numeroLote}</>}
                                                                             {m.usuarioNombre && <> · <span className="text-slate-400 dark:text-slate-500">{m.usuarioNombre}</span></>}
                                                                         </>
                                                                     )}
                                                                 </td>
-                                                                <td className="px-3 py-3">
+                                                                <td className="px-3 py-3 align-top">
                                                                     <div className="flex justify-end gap-1">
                                                                         <button
                                                                             onClick={() => abrirEditarMov(m)}
@@ -644,35 +726,48 @@ export default function StockPage() {
                                     <div className="md:hidden space-y-2">
                                         {movsFiltrados.map((m) => {
                                             const esEntrada = m.tipo === "entrada";
+                                            const items = itemsDe(m);
                                             return (
                                                 <div key={m.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
-                                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${esEntrada
-                                                                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
-                                                                    : "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400"
-                                                                    }`}>
-                                                                    {esEntrada ? "ENTRADA" : "SALIDA"}
-                                                                </span>
-                                                                <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded">#{m.id}</span>
-                                                                <span className="text-xs text-slate-600 dark:text-slate-400">{mostrarFecha(m.fecha)}</span>
-                                                            </div>
-                                                            <h3 className="font-semibold text-slate-900 dark:text-slate-100 mt-1.5 text-sm truncate">{m.producto}</h3>
-                                                            <p className="text-[10px] font-mono text-slate-400 dark:text-slate-500 truncate">{m.codigo}</p>
-                                                        </div>
-                                                        <div className="text-right flex-shrink-0">
-                                                            <p className={`text-lg font-bold tabular-nums leading-none ${esEntrada ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-                                                                }`}>
-                                                                {esEntrada ? "+" : "−"}{m.cantidad}
-                                                            </p>
-                                                        </div>
+                                                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${esEntrada
+                                                            ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
+                                                            : "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400"
+                                                            }`}>
+                                                            {esEntrada ? "ENTRADA" : "SALIDA"}
+                                                        </span>
+                                                        <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded">
+                                                            #{m.id}
+                                                        </span>
+                                                        <span className="text-xs text-slate-600 dark:text-slate-400">
+                                                            {mostrarFecha(m.fecha)}
+                                                        </span>
                                                     </div>
+
+                                                    <div className="space-y-1 mb-2">
+                                                        {items.map((it, i) => (
+                                                            <div key={i} className="flex items-center gap-2 text-xs bg-slate-50 dark:bg-slate-800/60 rounded-md px-2 py-1.5">
+                                                                <span className={`font-bold tabular-nums w-8 text-right flex-shrink-0 ${esEntrada ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                                                                    }`}>
+                                                                    {esEntrada ? "+" : "−"}{it.cantidad}
+                                                                </span>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-slate-800 dark:text-slate-200 font-medium truncate">{it.producto}</p>
+                                                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">
+                                                                        {it.codigo}
+                                                                        {it.numeroLote && ` · ${it.numeroLote}`}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
                                                     <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 truncate">
                                                         {esEntrada
-                                                            ? `${m.numeroFactura || ""} ${m.numeroLote ? `· Lote ${m.numeroLote}` : ""}`.trim() || "—"
+                                                            ? `${m.numeroFactura || ""}`.trim() || "—"
                                                             : `${m.movimiento || ""} ${m.usuarioNombre ? `· ${m.usuarioNombre}` : ""}`.trim() || "—"}
                                                     </p>
+
                                                     <div className="flex items-center gap-1.5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
                                                         <button
                                                             onClick={() => abrirEditarMov(m)}
@@ -695,18 +790,43 @@ export default function StockPage() {
                             )}
                         </>
                     )}
+
+                    {/* ============ TAB ESTADÍSTICAS ============ */}
+                    {tab === "estadisticas" && (
+                        <EstadisticasStock stock={stock} movimientos={movimientos} />
+                    )}
                 </>
             )}
 
-            {/* MODAL MOV */}
+            {/* MODAL MOVIMIENTO (ENTRADA o SALIDA) */}
             <Modal
                 open={modalMov}
                 onClose={cerrarMov}
-                title={editandoMov ? `Editar movimiento #${editandoMov}` : "Nuevo movimiento"}
+                title={
+                    editandoMov
+                        ? `Editar movimiento #${editandoMov}`
+                        : formMov.tipo === "entrada"
+                            ? "Nueva entrada"
+                            : "Nueva salida"
+                }
                 size="lg"
             >
                 <form onSubmit={guardarMov} className="space-y-4">
-                    <FormMovimiento values={formMov} onChange={onMovChange} esEdicion={Boolean(editandoMov)} />
+                    {formMov.tipo === "entrada" ? (
+                        <FormMovimiento
+                            values={formMov}
+                            onChange={onMovChange}
+                            esEdicion={Boolean(editandoMov)}
+                        />
+                    ) : (
+                        <FormSalida
+                            values={formMov}
+                            onChange={onMovChange}
+                            esEdicion={Boolean(editandoMov)}
+                            mapaStock={mapaStock}
+                        />
+                    )}
+
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                         <button
                             type="button"
@@ -723,7 +843,13 @@ export default function StockPage() {
                                 : "bg-red-600 hover:bg-red-700 disabled:bg-red-300 dark:disabled:bg-red-900"
                                 }`}
                         >
-                            {guardando ? "Guardando..." : editandoMov ? "Guardar cambios" : formMov.tipo === "entrada" ? "Registrar entrada" : "Registrar salida"}
+                            {guardando
+                                ? "Guardando..."
+                                : editandoMov
+                                    ? "Guardar cambios"
+                                    : formMov.tipo === "entrada"
+                                        ? "Registrar entrada"
+                                        : "Registrar salida"}
                         </button>
                     </div>
                 </form>

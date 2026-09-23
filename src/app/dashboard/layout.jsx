@@ -9,6 +9,7 @@ import {
     IconUser,
     IconProviders,
     IconAmbulance,
+    IconClipboard,
     IconInvoice,
 } from "@/components/Icons";
 
