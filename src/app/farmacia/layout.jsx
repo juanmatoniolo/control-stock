@@ -2,10 +2,11 @@
 
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
-import { IconHome, IconExit } from "@/components/Icons";
+import { IconHome, IconBox, IconExit } from "@/components/Icons";
 
 const MENU = [
     { href: "/farmacia", label: "Inicio", icon: IconHome },
+    { href: "/farmacia/inventario", label: "Inventario", icon: IconBox },
     { href: "/farmacia/egresos", label: "Egresos", icon: IconExit },
 ];
 
