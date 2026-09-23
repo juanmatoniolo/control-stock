@@ -27,42 +27,34 @@ export async function reservarIds(cantidad = 1) {
 }
 
 /* ======================================================
-   HELPERS
+   HELPERS FECHA / HORA
    ====================================================== */
-// Convierte fecha a "YYYY-MM-DD"
 export function normalizarFecha(valor) {
 	if (!valor) return "";
-	// Date object
 	if (valor instanceof Date && !isNaN(valor)) {
 		const y = valor.getFullYear();
 		const m = String(valor.getMonth() + 1).padStart(2, "0");
 		const d = String(valor.getDate()).padStart(2, "0");
 		return `${y}-${m}-${d}`;
 	}
-	// Número (serial de Excel)
 	if (typeof valor === "number") {
 		const d = new Date((valor - 25569) * 86400 * 1000);
 		return normalizarFecha(d);
 	}
-	// String
 	const s = String(valor).trim();
 	if (!s) return "";
-	// YYYY-MM-DD ya formateado
 	if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-	// DD/MM/YYYY o DD-MM-YYYY
 	const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
 	if (m1) {
 		let [, d, m, y] = m1;
 		if (y.length === 2) y = "20" + y;
 		return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 	}
-	// Fallback: parse nativo
 	const parsed = new Date(s);
 	if (!isNaN(parsed)) return normalizarFecha(parsed);
 	return s;
 }
 
-// Convierte hora a "HH:MM"
 export function normalizarHora(valor) {
 	if (!valor) return "";
 	if (valor instanceof Date && !isNaN(valor)) {
@@ -71,7 +63,6 @@ export function normalizarHora(valor) {
 		).padStart(2, "0")}`;
 	}
 	if (typeof valor === "number") {
-		// Excel serial: fracción del día
 		const totalMin = Math.round((valor % 1) * 24 * 60);
 		const h = Math.floor(totalMin / 60);
 		const m = totalMin % 60;
@@ -84,7 +75,6 @@ export function normalizarHora(valor) {
 	return s;
 }
 
-// Formatea fecha para mostrar (DD/MM/YYYY)
 export function mostrarFecha(iso) {
 	if (!iso) return "";
 	const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -103,7 +93,6 @@ export function suscribirCombustible(callback) {
 			return;
 		}
 		const arr = Object.values(snap.val()).sort((a, b) => {
-			// Ordenar por fecha + hora descendente
 			const ka = `${a.fecha || ""} ${a.hora || ""}`;
 			const kb = `${b.fecha || ""} ${b.hora || ""}`;
 			return kb.localeCompare(ka);
@@ -113,17 +102,27 @@ export function suscribirCombustible(callback) {
 }
 
 /* ======================================================
+   LIMPIAR PAYLOAD
+   ====================================================== */
+function limpiar(data) {
+	return {
+		fecha: normalizarFecha(data.fecha),
+		hora: normalizarHora(data.hora),
+		numeroRemito: (data.numeroRemito || "").trim(),
+		litros: Number(data.litros) || 0,
+		choferId: data.choferId ?? null,
+		chofer: (data.chofer || "").trim(),
+	};
+}
+
+/* ======================================================
    CREAR
    ====================================================== */
 export async function crearCarga(data) {
 	const [id] = await reservarIds(1);
 	const payload = {
 		id,
-		fecha: normalizarFecha(data.fecha),
-		hora: normalizarHora(data.hora),
-		numeroRemito: (data.numeroRemito || "").trim(),
-		litros: Number(data.litros) || 0,
-		chofer: (data.chofer || "").trim(),
+		...limpiar(data),
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
 	};
@@ -135,15 +134,10 @@ export async function crearCarga(data) {
    ACTUALIZAR
    ====================================================== */
 export async function actualizarCarga(id, data) {
-	const payload = {
-		fecha: normalizarFecha(data.fecha),
-		hora: normalizarHora(data.hora),
-		numeroRemito: (data.numeroRemito || "").trim(),
-		litros: Number(data.litros) || 0,
-		chofer: (data.chofer || "").trim(),
+	await update(ref(db, `${COMBUSTIBLE_PATH}/${id}`), {
+		...limpiar(data),
 		updatedAt: Date.now(),
-	};
-	await update(ref(db, `${COMBUSTIBLE_PATH}/${id}`), payload);
+	});
 }
 
 /* ======================================================
@@ -166,11 +160,7 @@ export async function importarCargas(lista) {
 		const id = ids[i];
 		updates[`${COMBUSTIBLE_PATH}/${id}`] = {
 			id,
-			fecha: normalizarFecha(item.fecha),
-			hora: normalizarHora(item.hora),
-			numeroRemito: (item.numeroRemito || "").trim(),
-			litros: Number(item.litros) || 0,
-			chofer: (item.chofer || "").trim(),
+			...limpiar(item),
 			createdAt: ahora,
 			updatedAt: ahora,
 		};
@@ -202,13 +192,12 @@ export function exportarExcel(cargas) {
 		],
 	});
 
-	// Anchos de columna
 	ws["!cols"] = [
-		{ wch: 16 }, // Fecha
-		{ wch: 8 }, // Hora
-		{ wch: 20 }, // N° Remito
-		{ wch: 16 }, // Litros
-		{ wch: 24 }, // Chofer
+		{ wch: 16 },
+		{ wch: 8 },
+		{ wch: 22 },
+		{ wch: 16 },
+		{ wch: 26 },
 	];
 
 	const wb = XLSX.utils.book_new();
@@ -223,16 +212,8 @@ export function exportarExcel(cargas) {
 }
 
 /* ======================================================
-   HELPERS DE PLANTILLA
+   PLANTILLA
    ====================================================== */
-export const CARGA_VACIA = {
-	fecha: new Date().toISOString().slice(0, 10),
-	hora: "",
-	numeroRemito: "",
-	litros: "",
-	chofer: "",
-};
-
 export function descargarPlantilla() {
 	const ejemplo = [
 		{
@@ -240,14 +221,14 @@ export function descargarPlantilla() {
 			Hora: "09:30",
 			"Número de Remito": "R-0001-00012345",
 			"Litros Cargados": 50,
-			Chofer: "Juan Pérez",
+			Chofer: "Pérez, Juan",
 		},
 		{
 			"Fecha de Carga": "02/12/2025",
 			Hora: "14:15",
 			"Número de Remito": "R-0001-00012346",
 			"Litros Cargados": 45.5,
-			Chofer: "Carlos Gómez",
+			Chofer: "Gómez, Carlos",
 		},
 	];
 
@@ -263,12 +244,24 @@ export function descargarPlantilla() {
 	ws["!cols"] = [
 		{ wch: 16 },
 		{ wch: 8 },
-		{ wch: 20 },
+		{ wch: 22 },
 		{ wch: 16 },
-		{ wch: 24 },
+		{ wch: 26 },
 	];
 
 	const wb = XLSX.utils.book_new();
 	XLSX.utils.book_append_sheet(wb, ws, "Combustible");
 	XLSX.writeFile(wb, "plantilla_combustible.xlsx");
 }
+
+/* ======================================================
+   VACÍO
+   ====================================================== */
+export const CARGA_VACIA = {
+	fecha: new Date().toISOString().slice(0, 10),
+	hora: "",
+	numeroRemito: "",
+	litros: "",
+	choferId: null,
+	chofer: "",
+};

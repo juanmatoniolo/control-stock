@@ -15,7 +15,7 @@ import {
 } from "@/lib/combustible";
 
 /* ============================================
-   TARJETA DE RESUMEN
+   STAT CARD
    ============================================ */
 function StatCard({ label, value, sub, accent = "sky" }) {
     const accents = {
@@ -54,7 +54,7 @@ export default function CombustiblePage() {
         return () => unsub();
     }, []);
 
-    /* ============ MESES DISPONIBLES (para el selector) ============ */
+    /* ============ MESES DISPONIBLES ============ */
     const mesesDisponibles = useMemo(() => {
         const set = new Set();
         cargas.forEach((c) => {
@@ -103,6 +103,7 @@ export default function CombustiblePage() {
             hora: c.hora || "",
             numeroRemito: c.numeroRemito || "",
             litros: c.litros ?? "",
+            choferId: c.choferId ?? null,
             chofer: c.chofer || "",
         });
         setModalForm(true);
@@ -120,7 +121,9 @@ export default function CombustiblePage() {
 
     async function guardar(e) {
         e.preventDefault();
-        if (!form.fecha || !form.numeroRemito || !form.litros || !form.chofer) return;
+        if (!form.fecha || !form.numeroRemito?.trim() || form.litros === "" || !form.chofer?.trim()) {
+            return;
+        }
 
         setGuardando(true);
         try {
@@ -257,7 +260,7 @@ export default function CombustiblePage() {
                 <select
                     value={filtroMes}
                     onChange={(e) => setFiltroMes(e.target.value)}
-                    className="px-3 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 focus:border-sky-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 sm:w-48"
+                    className="px-3 py-2.5 text-sm rounded-lg border border-slate-300 dark:border-slate-700 focus:border-sky-500 outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 sm:w-52"
                 >
                     <option value="">Todos los meses</option>
                     {mesesDisponibles.map((m) => {
@@ -326,7 +329,7 @@ export default function CombustiblePage() {
                                             <td className="px-3 py-3 text-right font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
                                                 {Number(c.litros || 0).toFixed(2)} L
                                             </td>
-                                            <td className="px-3 py-3 text-slate-700 dark:text-slate-300 truncate max-w-[200px]">
+                                            <td className="px-3 py-3 text-slate-700 dark:text-slate-300 truncate max-w-[220px]">
                                                 {c.chofer || "—"}
                                             </td>
                                             <td className="px-3 py-3">
@@ -354,7 +357,6 @@ export default function CombustiblePage() {
                                         </tr>
                                     ))}
                                 </tbody>
-                                {/* FOOTER con total */}
                                 <tfoot className="bg-slate-50 dark:bg-slate-800/50 border-t-2 border-slate-200 dark:border-slate-700">
                                     <tr>
                                         <td colSpan={4} className="px-3 py-3 text-right font-semibold text-slate-700 dark:text-slate-300">
@@ -435,7 +437,7 @@ export default function CombustiblePage() {
                             </div>
                         ))}
 
-                        {/* TOTAL mobile */}
+                        {/* TOTAL MOBILE */}
                         <div className="bg-gradient-to-br from-sky-500 to-sky-700 text-white rounded-xl p-4 shadow-lg">
                             <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">Total del período</span>
@@ -459,7 +461,11 @@ export default function CombustiblePage() {
                 size="md"
             >
                 <form onSubmit={guardar} className="space-y-4">
-                    <FormCombustible values={form} onChange={onFormChange} />
+                    <FormCombustible
+                        values={form}
+                        onChange={onFormChange}
+                        esEdicion={Boolean(editando)}
+                    />
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                         <button
                             type="button"
@@ -483,7 +489,9 @@ export default function CombustiblePage() {
             <ModalImportar
                 open={modalImport}
                 onClose={() => setModalImport(false)}
-                onDone={(n) => alert(`✅ ${n} carga${n === 1 ? "" : "s"} importada${n === 1 ? "" : "s"}`)}
+                onDone={(n) =>
+                    alert(`✅ ${n} carga${n === 1 ? "" : "s"} importada${n === 1 ? "" : "s"}`)
+                }
             />
         </div>
     );

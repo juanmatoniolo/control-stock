@@ -6,8 +6,9 @@ import {
     IconHome,
     IconStock,
     IconFuel,
+    IconUser,
     IconProviders,
-    IconTruck,
+    IconAmbulance,
     IconInvoice,
 } from "@/components/Icons";
 
@@ -15,8 +16,9 @@ const MENU = [
     { href: "/dashboard", label: "Inicio", icon: IconHome },
     { href: "/dashboard/stock", label: "Stock", icon: IconStock },
     { href: "/dashboard/combustible", label: "Combustible", icon: IconFuel },
+    { href: "/dashboard/choferes", label: "Choferes", icon: IconUser },
+    { href: "/dashboard/traslados", label: "Traslados", icon: IconAmbulance },
     { href: "/dashboard/proveedores", label: "Proveedores", icon: IconProviders },
-    { href: "/dashboard/traslados", label: "Traslados", icon: IconTruck },
     { href: "/dashboard/facturas", label: "Facturas", icon: IconInvoice },
 ];
 

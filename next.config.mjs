@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-	turbopack: {
-		root: "C:\\Users\\juanma\\Desktop\\control-stock",
-	},
-};
+
+const nextConfig = {};
 
 export default nextConfig;

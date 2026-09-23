@@ -1,12 +1,14 @@
 "use client";
 
+import ChoferSelect from "@/components/choferes/ChoferSelect";
+
 const inputClass =
     "w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/50 outline-none transition text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 dark:placeholder:text-slate-500";
 
 const labelClass =
     "block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1";
 
-export default function FormCombustible({ values, onChange }) {
+export default function FormCombustible({ values, onChange, esEdicion = false }) {
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             {/* FECHA */}
@@ -66,19 +68,34 @@ export default function FormCombustible({ values, onChange }) {
                 />
             </div>
 
-            {/* CHOFER */}
+            {/* CHOFER — SELECTOR CON BÚSQUEDA */}
             <div>
                 <label className={labelClass}>
                     Chofer <span className="text-red-500">*</span>
                 </label>
-                <input
-                    type="text"
-                    value={values.chofer ?? ""}
-                    onChange={(e) => onChange("chofer", e.target.value)}
-                    placeholder="Nombre del chofer"
-                    className={inputClass}
-                    required
+                <ChoferSelect
+                    value={
+                        values.choferId || values.chofer
+                            ? { id: values.choferId, nombre: values.chofer }
+                            : null
+                    }
+                    onChange={(c) => {
+                        if (!c) {
+                            onChange("choferId", null);
+                            onChange("chofer", "");
+                        } else {
+                            onChange("choferId", c.id ?? null);
+                            onChange("chofer", c.nombre || "");
+                        }
+                    }}
+                    soloActivos={!esEdicion}
+                    placeholder="Buscar chofer..."
                 />
+                {esEdicion && (
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                        En edición se muestran también choferes dados de baja
+                    </p>
+                )}
             </div>
         </div>
     );

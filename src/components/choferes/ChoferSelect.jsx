@@ -3,14 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { suscribirChoferes, nombreCompleto } from "@/lib/choferes";
 
-/**
- * Selector de chofer con búsqueda.
- * - En modo "activos": solo muestra activos (para crear nuevos)
- * - En modo "todos": incluye inactivos (para editar históricos)
- *
- * value: { id, nombre }  →  id puede ser null si fue texto libre
- * onChange: (chofer | null) => void
- */
 export default function ChoferSelect({
     value,
     onChange,
@@ -30,7 +22,6 @@ export default function ChoferSelect({
         return () => unsub();
     }, []);
 
-    // Cerrar al hacer clic fuera
     useEffect(() => {
         function onClick(e) {
             if (wrapRef.current && !wrapRef.current.contains(e.target)) {
@@ -57,7 +48,6 @@ export default function ChoferSelect({
             .slice(0, 30);
     }, [disponibles, query]);
 
-    // Texto que se ve en el input
     const displayValue = enfocado
         ? query
         : value?.nombre || value?.apellido
@@ -65,7 +55,12 @@ export default function ChoferSelect({
             : "";
 
     function elegir(c) {
-        onChange({ id: c.id, nombre: nombreCompleto(c), apellido: c.apellido, name: c.nombre });
+        onChange({
+            id: c.id,
+            nombre: nombreCompleto(c),
+            apellido: c.apellido,
+            name: c.nombre,
+        });
         setQuery("");
         setAbierto(false);
         setEnfocado(false);
@@ -87,7 +82,6 @@ export default function ChoferSelect({
                     onChange={(e) => {
                         setQuery(e.target.value);
                         setAbierto(true);
-                        // Si el texto no coincide exactamente con el chofer elegido → lo desasociamos
                         if (value) onChange(null);
                     }}
                     onFocus={() => {
@@ -96,13 +90,13 @@ export default function ChoferSelect({
                         setAbierto(true);
                     }}
                     placeholder={placeholder}
-                    className="w-full px-3 py-2 pr-9 text-sm rounded-lg border border-slate-300 dark:border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/50 outline-none transition text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                    className="w-full px-3 py-2 pr-9 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/50 outline-none transition"
                 />
                 {value && !enfocado ? (
                     <button
                         type="button"
                         onClick={limpiar}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition"
                         aria-label="Limpiar"
                     >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
@@ -111,7 +105,7 @@ export default function ChoferSelect({
                     </button>
                 ) : (
                     <svg
-                        className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                        className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none"
                         fill="none"
                         stroke="currentColor"
                         strokeWidth="2"
@@ -122,7 +116,6 @@ export default function ChoferSelect({
                 )}
             </div>
 
-            {/* DROPDOWN */}
             {abierto && (
                 <div className="absolute z-30 mt-1 left-0 right-0 max-h-72 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl">
                     {filtrados.length === 0 ? (
@@ -137,7 +130,7 @@ export default function ChoferSelect({
                                     }}
                                     className="text-xs text-sky-600 dark:text-sky-400 hover:underline"
                                 >
-                                    Usar "{query.trim()}" como texto libre
+                                    Usar &quot;{query.trim()}&quot; como texto libre
                                 </button>
                             ) : (
                                 <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -178,7 +171,13 @@ export default function ChoferSelect({
                                                 </p>
                                             </div>
                                             {seleccionado && (
-                                                <svg className="w-4 h-4 text-sky-600 dark:text-sky-400 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                <svg
+                                                    className="w-4 h-4 text-sky-600 dark:text-sky-400 flex-shrink-0"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.5"
+                                                    viewBox="0 0 24 24"
+                                                >
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                                 </svg>
                                             )}
