@@ -3,6 +3,7 @@ import {
 	set,
 	update,
 	remove,
+	get,
 	runTransaction,
 	onValue,
 } from "firebase/database";
@@ -128,13 +129,11 @@ export async function crearProducto(data) {
 	const payload = limpiarProducto(data);
 	if (!payload.codigo) throw new Error("Código requerido");
 
-	const existente = await new Promise((res) => {
-		const unsub = suscribirProductos((arr) => {
-			unsub();
-			res(arr.find((p) => p.codigo === payload.codigo));
-		});
-	});
-	if (existente) throw new Error("Ya existe un producto con ese código");
+	// Lectura única con get() — sin suscripción ni Promise anidada
+	const snap = await get(ref(db, `${PRODUCTOS_PATH}/${payload.codigo}`));
+	if (snap.exists()) {
+		throw new Error("Ya existe un producto con ese código");
+	}
 
 	const final = { ...payload, createdAt: Date.now(), updatedAt: Date.now() };
 	await set(ref(db, `${PRODUCTOS_PATH}/${payload.codigo}`), final);
@@ -150,6 +149,23 @@ export async function actualizarProducto(codigo, data) {
 
 export async function eliminarProducto(codigo) {
 	await remove(ref(db, `${PRODUCTOS_PATH}/${codigo}`));
+}
+
+// Busca un producto por código (case-insensitive). Útil para autocompletar.
+export async function buscarProductoPorCodigo(codigo) {
+	const cod = String(codigo || "").trim();
+	if (!cod) return null;
+	const snap = await get(ref(db, `${PRODUCTOS_PATH}/${cod}`));
+	if (snap.exists()) return snap.val();
+	const all = await get(ref(db, PRODUCTOS_PATH));
+	if (!all.exists()) return null;
+	const arr = Object.values(all.val());
+	return (
+		arr.find(
+			(p) =>
+				String(p.codigo || "").trim().toLowerCase() === cod.toLowerCase(),
+		) || null
+	);
 }
 
 export const PRODUCTO_VACIO = {
@@ -906,6 +922,7 @@ export function exportarEgresosExcel(egresos) {
 	const nombre = `egresos_${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}.xlsx`;
 	XLSX.writeFile(wb, nombre);
 }
+
 /* ======================================================
    PLANTILLA
    ====================================================== */

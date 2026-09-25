@@ -91,6 +91,7 @@ export default function StockPage() {
     const [editandoMov, setEditandoMov] = useState(null);
     const [editandoProd, setEditandoProd] = useState(null);
     const [detalleItem, setDetalleItem] = useState(null);
+    const [autocompletado, setAutocompletado] = useState(false);
 
     const [formMov, setFormMov] = useState(MOVIMIENTO_VACIO);
     const [formProd, setFormProd] = useState(PRODUCTO_VACIO);
@@ -196,7 +197,32 @@ export default function StockPage() {
     }
 
     function onMovChange(name, value) {
-        setFormMov((f) => ({ ...f, [name]: value }));
+        setFormMov((f) => {
+            const next = { ...f, [name]: value };
+
+            // Autocompletar en ENTRADA cuando el código existe en stock
+            if (name === "codigo" && f.tipo === "entrada") {
+                const cod = String(value || "").trim().toLowerCase();
+                const prod = cod
+                    ? stock.find(
+                          (s) =>
+                              String(s.codigo || "").trim().toLowerCase() === cod,
+                      )
+                    : null;
+                if (prod) {
+                    if (!next.producto) next.producto = prod.producto || "";
+                    if (!next.marca && prod.ultimaMarca) next.marca = prod.ultimaMarca;
+                    if (!next.numeroLote && prod.ultimoLote)
+                        next.numeroLote = prod.ultimoLote;
+                    if (!next.vencimiento && prod.ultimoVencimiento)
+                        next.vencimiento = prod.ultimoVencimiento;
+                    if (!next.precioUnitario && prod.ultimoPrecioUnitario)
+                        next.precioUnitario = prod.ultimoPrecioUnitario;
+                }
+            }
+
+            return next;
+        });
     }
 
     async function guardarMov(e) {
@@ -255,12 +281,14 @@ export default function StockPage() {
     function abrirNuevoProd() {
         setEditandoProd(null);
         setFormProd(PRODUCTO_VACIO);
+        setAutocompletado(false);
         setModalProd(true);
     }
 
     function abrirEditarProd(p) {
         setEditandoProd(p.codigo);
         setFormProd({ ...PRODUCTO_VACIO, ...p });
+        setAutocompletado(false);
         setModalProd(true);
     }
 
@@ -268,10 +296,39 @@ export default function StockPage() {
         setModalProd(false);
         setEditandoProd(null);
         setFormProd(PRODUCTO_VACIO);
+        setAutocompletado(false);
     }
 
     function onProdChange(name, value) {
-        setFormProd((f) => ({ ...f, [name]: value }));
+        // Buscar coincidencia por código (solo cuando estamos creando)
+        const cod = name === "codigo" ? String(value || "").trim().toLowerCase() : null;
+        const existente = cod
+            ? productos.find(
+                  (p) => String(p.codigo || "").trim().toLowerCase() === cod,
+              )
+            : null;
+
+        setFormProd((f) => {
+            const next = { ...f, [name]: value };
+
+            if (name === "codigo" && !editandoProd && existente) {
+                next.producto = existente.producto || "";
+                next.stockInicial = existente.stockInicial ?? "";
+                next.stockMinimo = existente.stockMinimo ?? 5;
+                next.activo = existente.activo !== false;
+            }
+
+            return next;
+        });
+
+        // Si creando el código ya existe → pasamos a modo edición automáticamente
+        if (name === "codigo" && !editandoProd && existente) {
+            setEditandoProd(existente.codigo);
+            setAutocompletado(true);
+        }
+        if (name === "codigo" && !existente) {
+            setAutocompletado(false);
+        }
     }
 
     async function guardarProd(e) {
@@ -863,7 +920,14 @@ export default function StockPage() {
                 size="md"
             >
                 <form onSubmit={guardarProd} className="space-y-4">
+                    {autocompletado && (
+                        <div className="text-xs rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 px-3 py-2">
+                            ⚠ Este código ya existe — los datos se cargaron automáticamente. Guardá para actualizar el producto.
+                        </div>
+                    )}
+
                     <FormProducto values={formProd} onChange={onProdChange} esEdicion={Boolean(editandoProd)} />
+
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                         <button
                             type="button"

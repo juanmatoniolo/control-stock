@@ -99,20 +99,24 @@ export const metadata = {
   // ============================================
   // MISC
   // ============================================
-  metadataBase: new URL("https://control-de-stock-962ab.web.app"), // ⚠️ cambiá por tu dominio real
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5,
-    userScalable: true,
-    themeColor: [
-      { media: "(prefers-color-scheme: light)", color: "#0ea5e9" },
-      { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
-    ],
-  },
+  metadataBase: new URL("https://control-de-stock-962ab.web.app"),
 };
 
-// Script anti-flash: aplica tema y tamaño de fuente
+// ============================================
+// VIEWPORT (export separado — requerido por Next.js 14+)
+// ============================================
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#0ea5e9" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
+  ],
+};
+
+// Script anti-flash: aplica tema y tamaño de fuente antes de pintar
 const bootScript = `
 (function() {
   try {
@@ -141,10 +145,12 @@ export default function RootLayout({ children }) {
         <meta name="apple-mobile-web-app-title" content="Minerva y Apolo" />
         {/* Android PWA */}
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#0ea5e9" />
         <meta name="msapplication-TileColor" content="#0ea5e9" />
       </head>
-      <body className="antialiased bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+      <body
+        suppressHydrationWarning
+        className="antialiased bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+      >
         <ThemeProvider>
           <FontSizeProvider>
             <AuthProvider>{children}</AuthProvider>
