@@ -62,7 +62,6 @@ export function suscribirMovimientos(callback) {
 /* ======================================================
    HELPERS DE ITEMS
    ====================================================== */
-// Devuelve items normalizados de un movimiento (compatibilidad con datos viejos)
 export function itemsDe(mov) {
 	if (!mov) return [];
 	if (Array.isArray(mov.items) && mov.items.length) {
@@ -78,7 +77,6 @@ export function itemsDe(mov) {
 			_idx: i,
 		}));
 	}
-	// Compatibilidad: movimiento de 1 solo item (formato viejo)
 	if (mov.codigo) {
 		return [
 			{
@@ -119,6 +117,8 @@ function limpiarProducto(data) {
 	return {
 		codigo: String(data.codigo || "").trim(),
 		producto: String(data.producto || "").trim(),
+		marca: String(data.marca || "").trim(),
+		categoria: String(data.categoria || "").trim(),
 		stockInicial: Number(data.stockInicial) || 0,
 		stockMinimo: Number(data.stockMinimo) || 0,
 		activo: data.activo !== false,
@@ -129,7 +129,6 @@ export async function crearProducto(data) {
 	const payload = limpiarProducto(data);
 	if (!payload.codigo) throw new Error("Código requerido");
 
-	// Lectura única con get() — sin suscripción ni Promise anidada
 	const snap = await get(ref(db, `${PRODUCTOS_PATH}/${payload.codigo}`));
 	if (snap.exists()) {
 		throw new Error("Ya existe un producto con ese código");
@@ -141,17 +140,30 @@ export async function crearProducto(data) {
 }
 
 export async function actualizarProducto(codigo, data) {
-	await update(ref(db, `${PRODUCTOS_PATH}/${codigo}`), {
-		...limpiarProducto({ ...data, codigo }),
+	const payload = {
+		codigo: String(codigo).trim(),
+		producto: String(data.producto || "").trim(),
+		marca: String(data.marca || "").trim(),
+		categoria: String(data.categoria || "").trim(),
+		stockMinimo: Number(data.stockMinimo) || 0,
+		activo: data.activo !== false,
 		updatedAt: Date.now(),
-	});
+	};
+	// Solo guardar stockInicial si viene explícito (evita borrarlo al editar)
+	if (
+		data.stockInicial !== undefined &&
+		data.stockInicial !== null &&
+		data.stockInicial !== ""
+	) {
+		payload.stockInicial = Number(data.stockInicial) || 0;
+	}
+	await update(ref(db, `${PRODUCTOS_PATH}/${codigo}`), payload);
 }
 
 export async function eliminarProducto(codigo) {
 	await remove(ref(db, `${PRODUCTOS_PATH}/${codigo}`));
 }
 
-// Busca un producto por código (case-insensitive). Útil para autocompletar.
 export async function buscarProductoPorCodigo(codigo) {
 	const cod = String(codigo || "").trim();
 	if (!cod) return null;
@@ -171,9 +183,12 @@ export async function buscarProductoPorCodigo(codigo) {
 export const PRODUCTO_VACIO = {
 	codigo: "",
 	producto: "",
+	marca: "",
+	categoria: "",
 	stockInicial: "",
 	stockMinimo: 5,
 	activo: true,
+	precioUnitario: "",
 };
 
 /* ======================================================
@@ -187,22 +202,26 @@ function limpiarMovimiento(data) {
 	};
 
 	if (tipo === "entrada") {
-		// Una entrada = un producto (una factura por producto)
+		const cantidad = Number(data.cantidad) || 0;
+		const precioUnitario = Number(data.precioUnitario) || 0;
+		const precioTotal =
+			Number(data.precioTotal) ||
+			Number((cantidad * precioUnitario).toFixed(2));
+
 		return {
 			...base,
 			codigo: String(data.codigo || "").trim(),
 			producto: String(data.producto || "").trim(),
-			cantidad: Number(data.cantidad) || 0,
+			cantidad,
 			marca: String(data.marca || "").trim(),
 			numeroLote: String(data.numeroLote || "").trim(),
 			vencimiento: normalizarFecha(data.vencimiento),
-			precioUnitario: Number(data.precioUnitario) || 0,
-			precioTotal: Number(data.precioTotal) || 0,
+			precioUnitario,
+			precioTotal,
 			numeroFactura: String(data.numeroFactura || "").trim(),
 		};
 	}
 
-	// Salida: puede tener múltiples items
 	const itemsRaw = Array.isArray(data.items) ? data.items : [];
 	const items = itemsRaw
 		.map(limpiarItem)
@@ -220,7 +239,6 @@ function limpiarMovimiento(data) {
 		items,
 		cantidadTotal,
 		precioTotalGlobal,
-		// Compatibilidad: si hay 1 solo item, espejamos los campos
 		...(items.length === 1
 			? {
 					codigo: items[0].codigo,
@@ -262,7 +280,6 @@ export async function eliminarMovimiento(id) {
 export const MOVIMIENTO_VACIO = {
 	tipo: "entrada",
 	fecha: new Date().toISOString().slice(0, 10),
-	// Entrada
 	codigo: "",
 	producto: "",
 	cantidad: "",
@@ -272,7 +289,6 @@ export const MOVIMIENTO_VACIO = {
 	precioUnitario: "",
 	precioTotal: "",
 	numeroFactura: "",
-	// Salida
 	movimiento: "",
 	observaciones: "",
 	usuario: "",
@@ -296,12 +312,10 @@ export function calcularStock(productos, movimientos) {
 			entradas: 0,
 			salidas: 0,
 			stockActual: Number(p.stockInicial) || 0,
-			// Datos del último lote ingresado (para autocompletar salidas)
 			ultimoPrecioUnitario: 0,
 			ultimaMarca: "",
 			ultimoLote: "",
 			ultimoVencimiento: "",
-			// Fechas
 			ultimaEntradaFecha: "",
 			ultimaSalidaFecha: "",
 			proximoVencimiento: "",
@@ -309,7 +323,6 @@ export function calcularStock(productos, movimientos) {
 		};
 	});
 
-	// Recorrer todos los movimientos
 	movimientos.forEach((m) => {
 		const items = itemsDe(m);
 
@@ -343,7 +356,6 @@ export function calcularStock(productos, movimientos) {
 
 			if (m.tipo === "entrada") {
 				item.entradas += cantidad;
-				// Actualizar datos del lote más reciente
 				if (it.precioUnitario)
 					item.ultimoPrecioUnitario = Number(it.precioUnitario) || 0;
 				if (it.marca) item.ultimaMarca = it.marca;
@@ -379,7 +391,6 @@ export function calcularStock(productos, movimientos) {
 		});
 	});
 
-	// Calcular estado
 	Object.values(mapa).forEach((item) => {
 		item.stockActual = item.stockInicial + item.entradas - item.salidas;
 
@@ -406,7 +417,6 @@ export function calcularStock(productos, movimientos) {
 export function exportarExcel(productos, movimientos, stock) {
 	const wb = XLSX.utils.book_new();
 
-	// HOJA 1: PRODUCTOS
 	const hojaProductos = stock.map((s) => ({
 		CODIGO: s.codigo,
 		PRODUCTO: s.producto,
@@ -444,7 +454,6 @@ export function exportarExcel(productos, movimientos, stock) {
 	];
 	XLSX.utils.book_append_sheet(wb, wsProd, "PRODUCTOS");
 
-	// HOJA 2: ENTRADAS
 	const hojaEntradas = [];
 	movimientos
 		.filter((m) => m.tipo === "entrada")
@@ -493,7 +502,6 @@ export function exportarExcel(productos, movimientos, stock) {
 	];
 	XLSX.utils.book_append_sheet(wb, wsEnt, "ENTRADAS");
 
-	// HOJA 3: SALIDAS
 	const hojaSalidas = [];
 	movimientos
 		.filter((m) => m.tipo === "salida")
@@ -852,7 +860,7 @@ export const MOVIMIENTOS_FRECUENTES = [
 ];
 
 /* ======================================================
-   EXPORTAR EGRESOS A EXCEL (una fila por item)
+   EXPORTAR EGRESOS A EXCEL
    ====================================================== */
 export function exportarEgresosExcel(egresos) {
 	const filas = [];

@@ -6,9 +6,12 @@ import { MOVIMIENTOS_FRECUENTES } from "@/lib/stock";
 const inputClass =
     "w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/50 outline-none transition";
 
+const inputReadonlyClass =
+    "w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-semibold tabular-nums outline-none cursor-not-allowed";
+
 const labelClass = "block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1";
 
-function Field({ label, name, value, onChange, type = "text", placeholder, required, step }) {
+function Field({ label, name, value, onChange, type = "text", placeholder, required, step, readOnly = false }) {
     return (
         <div>
             <label className={labelClass}>
@@ -20,15 +23,30 @@ function Field({ label, name, value, onChange, type = "text", placeholder, requi
                 value={value ?? ""}
                 onChange={(e) => onChange(name, e.target.value)}
                 placeholder={placeholder}
-                className={inputClass}
+                className={readOnly ? inputReadonlyClass : inputClass}
                 required={required}
+                readOnly={readOnly}
+                tabIndex={readOnly ? -1 : undefined}
             />
         </div>
     );
 }
 
+function fmtMoneda(n) {
+    const num = Number(n);
+    if (!isFinite(num) || num === 0) return "";
+    return `$ ${num.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function FormMovimiento({ values, onChange, esEdicion = false }) {
     const esEntrada = values.tipo === "entrada";
+
+    // Cálculo en vivo SOLO para mostrar; el valor real lo persiste el padre en onMovChange
+    const cantidadNum = Number(values.cantidad) || 0;
+    const precioUnitNum = Number(values.precioUnitario) || 0;
+    const totalCalculado = cantidadNum > 0 && precioUnitNum > 0
+        ? Number((cantidadNum * precioUnitNum).toFixed(2))
+        : Number(values.precioTotal) || 0;
 
     return (
         <div className="space-y-5">
@@ -137,7 +155,7 @@ export default function FormMovimiento({ values, onChange, esEdicion = false }) 
                 </div>
             )}
 
-            {/* DATOS DEL LOTE — comunes a entrada y salida */}
+            {/* DATOS DEL LOTE */}
             <div className="space-y-3">
                 <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Datos del lote
@@ -146,10 +164,55 @@ export default function FormMovimiento({ values, onChange, esEdicion = false }) 
                     <Field label="Marca" name="marca" value={values.marca} onChange={onChange} placeholder="Laboratorio / fabricante" />
                     <Field label="Nº de lote" name="numeroLote" value={values.numeroLote} onChange={onChange} placeholder="L-2025-001" />
                     <Field label="Vencimiento" name="vencimiento" type="date" value={values.vencimiento} onChange={onChange} />
-                    <Field label="Precio unitario" name="precioUnitario" type="number" step="0.01" value={values.precioUnitario} onChange={onChange} placeholder="0.00" />
-                    <div className="sm:col-span-2">
-                        <Field label="Precio total" name="precioTotal" type="number" step="0.01" value={values.precioTotal} onChange={onChange} placeholder="0.00" />
-                    </div>
+
+                    {esEntrada && (
+                        <>
+                            <Field
+                                label="Precio unitario"
+                                name="precioUnitario"
+                                type="number"
+                                step="0.01"
+                                value={values.precioUnitario}
+                                onChange={onChange}
+                                placeholder="0.00"
+                            />
+                            <div className="sm:col-span-2">
+                                <Field
+                                    label="Precio total (calculado)"
+                                    name="precioTotal"
+                                    type="text"
+                                    value={fmtMoneda(totalCalculado)}
+                                    onChange={() => {}}
+                                    readOnly
+                                />
+                                <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                                    {cantidadNum > 0 && precioUnitNum > 0 ? (
+                                        <>
+                                            = {cantidadNum} × {fmtMoneda(precioUnitNum)} — se calcula automáticamente
+                                        </>
+                                    ) : (
+                                        "Se completa al ingresar cantidad y precio unitario"
+                                    )}
+                                </p>
+                            </div>
+                        </>
+                    )}
+
+                    {!esEntrada && (
+                        <>
+                            <Field label="Precio unitario" name="precioUnitario" type="number" step="0.01" value={values.precioUnitario} onChange={onChange} placeholder="0.00" />
+                            <div className="sm:col-span-2">
+                                <Field
+                                    label="Precio total (calculado)"
+                                    name="precioTotal"
+                                    type="text"
+                                    value={fmtMoneda(totalCalculado)}
+                                    onChange={() => {}}
+                                    readOnly
+                                />
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
 

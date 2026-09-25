@@ -72,7 +72,7 @@ function StatCard({ label, value, sub, accent = "sky" }) {
 export default function StockPage() {
     const { user } = useAuth();
 
-    const [tab, setTab] = useState("stock"); // stock | movimientos | estadisticas
+    const [tab, setTab] = useState("stock");
     const [productos, setProductos] = useState([]);
     const [movimientos, setMovimientos] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -200,7 +200,6 @@ export default function StockPage() {
         setFormMov((f) => {
             const next = { ...f, [name]: value };
 
-            // Autocompletar en ENTRADA cuando el código existe en stock
             if (name === "codigo" && f.tipo === "entrada") {
                 const cod = String(value || "").trim().toLowerCase();
                 const prod = cod
@@ -221,6 +220,16 @@ export default function StockPage() {
                 }
             }
 
+            if (f.tipo === "entrada") {
+                const cant = Number(next.cantidad) || 0;
+                const pu = Number(next.precioUnitario) || 0;
+                if (cant > 0 && pu > 0) {
+                    next.precioTotal = Number((cant * pu).toFixed(2));
+                } else if (name === "cantidad" || name === "precioUnitario") {
+                    next.precioTotal = "";
+                }
+            }
+
             return next;
         });
     }
@@ -232,6 +241,9 @@ export default function StockPage() {
             if (!formMov.fecha || !formMov.codigo || !formMov.cantidad) {
                 alert("Completá fecha, producto y cantidad.");
                 return;
+            }
+            if (!Number(formMov.precioUnitario)) {
+                if (!confirm("El precio unitario está vacío o en 0. ¿Continuar igual?")) return;
             }
         } else {
             if (!formMov.fecha || !formMov.movimiento?.trim()) {
@@ -287,7 +299,12 @@ export default function StockPage() {
 
     function abrirEditarProd(p) {
         setEditandoProd(p.codigo);
-        setFormProd({ ...PRODUCTO_VACIO, ...p });
+        setFormProd({
+            ...PRODUCTO_VACIO,
+            ...p,
+            stockInicial: "",
+            precioUnitario: "",
+        });
         setAutocompletado(false);
         setModalProd(true);
     }
@@ -300,7 +317,6 @@ export default function StockPage() {
     }
 
     function onProdChange(name, value) {
-        // Buscar coincidencia por código (solo cuando estamos creando)
         const cod = name === "codigo" ? String(value || "").trim().toLowerCase() : null;
         const existente = cod
             ? productos.find(
@@ -313,15 +329,17 @@ export default function StockPage() {
 
             if (name === "codigo" && !editandoProd && existente) {
                 next.producto = existente.producto || "";
-                next.stockInicial = existente.stockInicial ?? "";
+                next.marca = existente.marca || "";
+                next.categoria = existente.categoria || "";
                 next.stockMinimo = existente.stockMinimo ?? 5;
                 next.activo = existente.activo !== false;
+                next.stockInicial = "";
+                next.precioUnitario = "";
             }
 
             return next;
         });
 
-        // Si creando el código ya existe → pasamos a modo edición automáticamente
         if (name === "codigo" && !editandoProd && existente) {
             setEditandoProd(existente.codigo);
             setAutocompletado(true);
@@ -336,11 +354,43 @@ export default function StockPage() {
         if (!formProd.codigo?.trim() || !formProd.producto?.trim()) return;
         setGuardando(true);
         try {
+            const cantidad = Number(formProd.stockInicial) || 0;
+            const precioUnitario = Number(formProd.precioUnitario) || 0;
+            const hayStockQueRegistrar = cantidad > 0;
+
             if (editandoProd) {
-                await actualizarProducto(editandoProd, formProd);
+                await actualizarProducto(editandoProd, {
+                    producto: formProd.producto,
+                    marca: formProd.marca,
+                    categoria: formProd.categoria,
+                    stockMinimo: formProd.stockMinimo,
+                    activo: formProd.activo,
+                });
             } else {
-                await crearProducto(formProd);
+                await crearProducto({
+                    ...formProd,
+                    stockInicial: hayStockQueRegistrar ? 0 : Number(formProd.stockInicial) || 0,
+                });
             }
+
+            if (hayStockQueRegistrar) {
+                await crearMovimiento({
+                    tipo: "entrada",
+                    fecha: new Date().toISOString().slice(0, 10),
+                    codigo: formProd.codigo.trim(),
+                    producto: formProd.producto.trim(),
+                    cantidad,
+                    marca: formProd.marca || "",
+                    numeroLote: "",
+                    vencimiento: "",
+                    precioUnitario,
+                    precioTotal: Number((cantidad * precioUnitario).toFixed(2)),
+                    numeroFactura: "",
+                    usuario: user?.usuario || "",
+                    usuarioNombre: user?.nombre || "",
+                });
+            }
+
             cerrarProd();
         } catch (err) {
             console.error(err);
@@ -378,7 +428,6 @@ export default function StockPage() {
     /* ============ RENDER ============ */
     return (
         <div>
-            {/* HEADER */}
             <header className="mb-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
@@ -423,7 +472,6 @@ export default function StockPage() {
                 </div>
             </header>
 
-            {/* RESUMEN */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
                 <StatCard label="Sin stock" value={resumen.sinStock} sub={resumen.sinStock === 1 ? "producto" : "productos"} accent="red" />
                 <StatCard label="Stock bajo" value={resumen.bajos} sub="Requieren reposición" accent="amber" />
@@ -431,7 +479,6 @@ export default function StockPage() {
                 <StatCard label="Movimientos" value={movimientos.length} sub={`${resumen.totalEntradas} ent · ${resumen.totalSalidas} sal`} accent="sky" />
             </div>
 
-            {/* TABS */}
             <div className="border-b border-slate-200 dark:border-slate-800 mb-5 overflow-x-auto">
                 <div className="flex min-w-max">
                     <TabButton active={tab === "stock"} onClick={() => setTab("stock")} count={stock.length}>
@@ -446,7 +493,6 @@ export default function StockPage() {
                 </div>
             </div>
 
-            {/* BARRA DE ACCIONES (oculta en estadísticas) */}
             {tab !== "estadisticas" && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                     <div className="relative flex-1 max-w-md">
@@ -496,7 +542,6 @@ export default function StockPage() {
                 </div>
             )}
 
-            {/* FILTROS MOVIMIENTOS */}
             {tab === "movimientos" && (
                 <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <select
@@ -523,14 +568,12 @@ export default function StockPage() {
                 </div>
             )}
 
-            {/* CONTENIDO */}
             {loading ? (
                 <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-8 text-center text-slate-400 dark:text-slate-500 text-sm">
                     Cargando...
                 </div>
             ) : (
                 <>
-                    {/* ============ TAB STOCK ============ */}
                     {tab === "stock" && (
                         <>
                             {stockFiltrado.length === 0 ? (
@@ -543,7 +586,6 @@ export default function StockPage() {
                                 </div>
                             ) : (
                                 <>
-                                    {/* DESKTOP */}
                                     <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-sm">
@@ -617,7 +659,6 @@ export default function StockPage() {
                                         </div>
                                     </div>
 
-                                    {/* MOBILE */}
                                     <div className="md:hidden space-y-2">
                                         {stockFiltrado.map((p) => (
                                             <div key={p.codigo} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
@@ -669,7 +710,6 @@ export default function StockPage() {
                         </>
                     )}
 
-                    {/* ============ TAB MOVIMIENTOS ============ */}
                     {tab === "movimientos" && (
                         <>
                             {movsFiltrados.length === 0 ? (
@@ -680,7 +720,6 @@ export default function StockPage() {
                                 </div>
                             ) : (
                                 <>
-                                    {/* DESKTOP */}
                                     <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-sm">
@@ -741,6 +780,9 @@ export default function StockPage() {
                                                                         <>
                                                                             {m.numeroFactura && <span className="font-mono">{m.numeroFactura}</span>}
                                                                             {items[0]?.marca && <> · {items[0].marca}</>}
+                                                                            {items[0]?.precioUnitario > 0 && (
+                                                                                <> · ${Number(items[0].precioUnitario).toLocaleString("es-AR")}</>
+                                                                            )}
                                                                         </>
                                                                     ) : (
                                                                         <>
@@ -779,7 +821,6 @@ export default function StockPage() {
                                         </div>
                                     </div>
 
-                                    {/* MOBILE */}
                                     <div className="md:hidden space-y-2">
                                         {movsFiltrados.map((m) => {
                                             const esEntrada = m.tipo === "entrada";
@@ -813,6 +854,7 @@ export default function StockPage() {
                                                                     <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">
                                                                         {it.codigo}
                                                                         {it.numeroLote && ` · ${it.numeroLote}`}
+                                                                        {it.precioUnitario > 0 && ` · $${Number(it.precioUnitario).toLocaleString("es-AR")}`}
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -848,14 +890,13 @@ export default function StockPage() {
                         </>
                     )}
 
-                    {/* ============ TAB ESTADÍSTICAS ============ */}
                     {tab === "estadisticas" && (
                         <EstadisticasStock stock={stock} movimientos={movimientos} />
                     )}
                 </>
             )}
 
-            {/* MODAL MOVIMIENTO (ENTRADA o SALIDA) */}
+            {/* MODAL MOVIMIENTO */}
             <Modal
                 open={modalMov}
                 onClose={cerrarMov}
@@ -922,11 +963,16 @@ export default function StockPage() {
                 <form onSubmit={guardarProd} className="space-y-4">
                     {autocompletado && (
                         <div className="text-xs rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 px-3 py-2">
-                            ⚠ Este código ya existe — los datos se cargaron automáticamente. Guardá para actualizar el producto.
+                            ⚠ Este código ya existe — los datos se cargaron automáticamente. Podés agregar más stock abajo.
                         </div>
                     )}
 
-                    <FormProducto values={formProd} onChange={onProdChange} esEdicion={Boolean(editandoProd)} />
+                    <FormProducto
+                        values={formProd}
+                        onChange={onProdChange}
+                        esEdicion={Boolean(editandoProd)}
+                        stockActual={editandoProd ? (mapaStock[editandoProd]?.stockActual ?? 0) : 0}
+                    />
 
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
                         <button
